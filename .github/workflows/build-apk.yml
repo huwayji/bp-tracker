@@ -6,21 +6,23 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-android:
+    name: Build for Android
     runs-on: ubuntu-latest
-    container:
-      image: kivy/buildozer-ci:latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Build APK with Buildozer
-        run: |
-          rm -f blood_pressure.db
-          buildozer android debug
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          workdir: .
+          buildozer_version: stable
 
-      - name: Upload APK
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bp-tracker-apk
-          path: ${{ github.workspace }}/bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
