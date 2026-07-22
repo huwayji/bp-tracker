@@ -17,7 +17,7 @@ jobs:
 
       - name: Build APK
         run: |
-          cd ${{ github.workspace }}
+          cd /__w/bp-tracker/bp-tracker
           rm -f blood_pressure.db
           buildozer android debug
 
@@ -25,4 +25,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bp-tracker-apk
-          path: ${{ github.workspace }}/bin/*.apk
+          path: /__w/bp-tracker/bp-tracker/bin/*.apk
