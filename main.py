@@ -134,16 +134,22 @@ class LineChart(RelativeLayout):
         self.top_margin = dp(8)
         self.value_labels = []
         self.date_labels = []
-        self.bind(pos=self.draw, size=self.draw)
+        self._scheduled = None
 
     def set_data(self, data_points, line_color=None, label=''):
         self.data_points = data_points
         if line_color:
             self.line_color = line_color
             self.fill_color = (*line_color[:3], 0.12)
+        if self._scheduled:
+            Clock.unschedule(self._scheduled)
+        self._scheduled = Clock.schedule_once(self._deferred_draw, 0.05)
+
+    def _deferred_draw(self, *args):
+        self._scheduled = None
         self.draw()
 
-    def draw(self, *args):
+    def draw(self):
         self.canvas.clear()
         for child in self.value_labels + self.date_labels:
             if child in self.children:
@@ -253,6 +259,14 @@ class LineChart(RelativeLayout):
 
 
 class DashboardScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        scroll = ScrollView()
+        self.content = BoxLayout(orientation='vertical', size_hint_y=None)
+        self.content.bind(minimum_height=self.content.setter('height'))
+        scroll.add_widget(self.content)
+        self.add_widget(scroll)
+
     def on_enter(self, *args):
         self.refresh()
 
@@ -260,10 +274,7 @@ class DashboardScreen(Screen):
         app = App.get_running_app()
         stats = app.db.get_statistics()
         latest = app.db.get_latest_reading()
-        content = self.ids.get('content')
-        if not content:
-            return
-        content.clear_widgets()
+        self.content.clear_widgets()
 
         header = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(100), padding=[dp(20), dp(16), dp(20), dp(8)])
         with header.canvas.before:
@@ -310,7 +321,7 @@ class DashboardScreen(Screen):
             subtitle.bind(size=subtitle.setter('text_size'))
             header.add_widget(subtitle)
 
-        content.add_widget(header)
+        self.content.add_widget(header)
 
         stats_grid = GridLayout(cols=2, spacing=dp(10), padding=[dp(16), dp(12), dp(16), dp(8)],
                                  size_hint_y=None, height=dp(200))
@@ -323,7 +334,7 @@ class DashboardScreen(Screen):
             stats_grid.add_widget(StatCard('Avg DIA', avg_dia, 'mmHg', (0.30, 0.69, 0.31, 1)))
             stats_grid.add_widget(StatCard('Avg HR', avg_hr, 'bpm', (0.30, 0.40, 0.80, 1)))
 
-        content.add_widget(stats_grid)
+        self.content.add_widget(stats_grid)
 
         btn_add = Button(
             text='+ ADD NEW READING',
@@ -335,10 +346,10 @@ class DashboardScreen(Screen):
             font_size=sp(16),
             bold=True
         )
-        btn_add.bind(on_press=lambda x: setattr(app.root, 'current', 'add'))
-        content.add_widget(btn_add)
+        btn_add.bind(on_press=lambda x: setattr(app.sm, 'current', 'add'))
+        self.content.add_widget(btn_add)
 
-        content.add_widget(Widget(size_hint_y=None, height=dp(20)))
+        self.content.add_widget(Widget(size_hint_y=None, height=dp(20)))
 
 
 class AddEditScreen(Screen):
@@ -510,7 +521,7 @@ class AddEditScreen(Screen):
             show_toast('Reading added!')
 
         self.clear_form()
-        app.root.current = 'readings'
+        app.sm.current = 'readings'
 
     def _parse_timestamp(self, ts_str):
         formats = [
@@ -531,7 +542,7 @@ class AddEditScreen(Screen):
     def go_back(self, *args):
         app = App.get_running_app()
         self.clear_form()
-        app.root.current = 'readings'
+        app.sm.current = 'readings'
 
     def clear_form(self):
         self.editing_id = None
@@ -563,16 +574,18 @@ class AddEditScreen(Screen):
 
 
 class ReadingsScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.content = BoxLayout(orientation='vertical')
+        self.add_widget(self.content)
+
     def on_enter(self, *args):
         self.refresh()
 
     def refresh(self):
         app = App.get_running_app()
         readings = app.db.get_all_readings()
-        content = self.ids.get('content')
-        if not content:
-            return
-        content.clear_widgets()
+        self.content.clear_widgets()
 
         header = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(56), padding=[dp(16), dp(12), dp(16), dp(12)])
         with header.canvas.before:
@@ -591,7 +604,7 @@ class ReadingsScreen(Screen):
         )
         h_label.bind(size=h_label.setter('text_size'))
         header.add_widget(h_label)
-        content.add_widget(header)
+        self.content.add_widget(header)
 
         if not readings:
             no_data = Label(
@@ -601,7 +614,7 @@ class ReadingsScreen(Screen):
                 halign='center',
                 valign='middle'
             )
-            content.add_widget(no_data)
+            self.content.add_widget(no_data)
             return
 
         scroll = ScrollView()
@@ -614,7 +627,7 @@ class ReadingsScreen(Screen):
             list_layout.add_widget(card)
 
         scroll.add_widget(list_layout)
-        content.add_widget(scroll)
+        self.content.add_widget(scroll)
 
     def _make_reading_card(self, reading):
         rid, ts, sys_val, dia_val, hr_val, notes = reading
@@ -633,9 +646,9 @@ class ReadingsScreen(Screen):
 
         with card.canvas.before:
             Color(1, 1, 1, 1)
-            self._rect = Rectangle(pos=card.pos, size=card.size)
+            card._rect = Rectangle(pos=card.pos, size=card.size)
             Color(0.88, 0.88, 0.88, 1)
-            self._line = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, dp(8)], width=1)
+            card._line = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, dp(8)], width=1)
         card.bind(pos=self._update_card_rect, size=self._update_card_rect)
 
         top_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(28), spacing=dp(8))
@@ -716,9 +729,9 @@ class ReadingsScreen(Screen):
 
     def _edit_reading(self, reading_id):
         app = App.get_running_app()
-        add_screen = app.root.get_screen('add')
+        add_screen = app.sm.get_screen('add')
         add_screen.load_reading(reading_id)
-        app.root.current = 'add'
+        app.sm.current = 'add'
 
     def _delete_reading(self, reading_id):
         app = App.get_running_app()
@@ -806,20 +819,20 @@ class ChartsScreen(Screen):
 
         layout.add_widget(toggle_bar)
 
-        self.chart = LineChart(size_hint=(1, 1))
+        self.chart = LineChart(size_hint=(1, 1), size_hint_min_y=dp(250))
         layout.add_widget(self.chart)
 
         self.add_widget(layout)
 
     def _switch_metric(self, metric, color):
         self.current_metric = metric
-        for btn, key, _ in self.toggle_buttons:
+        for btn, key, btn_color in self.toggle_buttons:
             if key == metric:
-                btn.background_color = (*color[:3], 0.25)
-                btn.color = color
+                btn.background_color = (*btn_color[:3], 0.25)
+                btn.color = btn_color
             else:
-                btn.background_color = (*color[:3], 0.08)
-                btn.color = (*color[:3], 0.6)
+                btn.background_color = (*btn_color[:3], 0.08)
+                btn.color = (*btn_color[:3], 0.6)
         self.refresh()
 
     def refresh(self):
@@ -854,14 +867,16 @@ class ChartsScreen(Screen):
 
 
 class ExportScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.content = BoxLayout(orientation='vertical')
+        self.add_widget(self.content)
+
     def on_enter(self, *args):
         self.refresh()
 
     def refresh(self):
-        content = self.ids.get('content')
-        if not content:
-            return
-        content.clear_widgets()
+        self.content.clear_widgets()
 
         header = BoxLayout(orientation='vertical', size_hint_y=None, height=dp(56), padding=[dp(16), dp(12), dp(16), dp(12)])
         with header.canvas.before:
@@ -874,7 +889,7 @@ class ExportScreen(Screen):
                          halign='center', valign='middle')
         h_label.bind(size=h_label.setter('text_size'))
         header.add_widget(h_label)
-        content.add_widget(header)
+        self.content.add_widget(header)
 
         info = Label(
             text='Export all your blood pressure readings\nto a CSV file for sharing or backup.',
@@ -883,7 +898,7 @@ class ExportScreen(Screen):
             size_hint_y=None, height=dp(80)
         )
         info.bind(size=info.setter('text_size'))
-        content.add_widget(info)
+        self.content.add_widget(info)
 
         app = App.get_running_app()
         stats = app.db.get_statistics()
@@ -894,9 +909,9 @@ class ExportScreen(Screen):
         stats_label = Label(text=stats_text, font_size=sp(14), color=TEXT_SECONDARY,
                              size_hint_y=None, height=dp(40), halign='center', valign='middle')
         stats_label.bind(size=stats_label.setter('text_size'))
-        content.add_widget(stats_label)
+        self.content.add_widget(stats_label)
 
-        content.add_widget(Widget(size_hint_y=None, height=dp(20)))
+        self.content.add_widget(Widget(size_hint_y=None, height=dp(20)))
 
         export_btn = Button(
             text='EXPORT TO CSV',
@@ -905,33 +920,407 @@ class ExportScreen(Screen):
             color=(1, 1, 1, 1), font_size=sp(16), bold=True
         )
         export_btn.bind(on_press=self.do_export)
-        content.add_widget(export_btn)
+        self.content.add_widget(export_btn)
 
-        content.add_widget(Widget(size_hint_y=None, height=dp(40)))
+        self.content.add_widget(Widget(size_hint_y=None, height=dp(40)))
 
         share_hint = Label(
-            text='The CSV file will be saved in the app folder.\n'
-                 'On Android, check your app storage or transfer via USB.',
+            text='The CSV file will be saved in your Downloads folder.',
             font_size=sp(12), color=TEXT_SECONDARY,
             halign='center', valign='middle',
             size_hint_y=None, height=dp(60)
         )
         share_hint.bind(size=share_hint.setter('text_size'))
-        content.add_widget(share_hint)
+        self.content.add_widget(share_hint)
 
     def do_export(self, *args):
         app = App.get_running_app()
         try:
-            export_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'exports')
+            if platform == 'android':
+                from jnius import autoclass
+                Environment = autoclass('android.os.Environment')
+                export_dir = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS).getAbsolutePath()
+            else:
+                export_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'exports')
             os.makedirs(export_dir, exist_ok=True)
             filename = f'blood_pressure_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
             filepath = os.path.join(export_dir, filename)
             app.db.export_csv(filepath)
-            show_toast(f'Exported: {filename}')
+            show_toast(f'Exported to Downloads: {filename}')
         except Exception as e:
             popup = Popup(title='Export Error', content=Label(text=str(e)),
                           size_hint=(0.8, 0.4))
             popup.open()
+
+
+class ScanScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = BoxLayout(orientation='vertical')
+        with layout.canvas.before:
+            Color(*BG, 1)
+            self.bg_rect = Rectangle(pos=layout.pos, size=layout.size)
+        layout.bind(pos=lambda i, v: setattr(self.bg_rect, 'pos', layout.pos))
+        layout.bind(size=lambda i, v: setattr(self.bg_rect, 'size', layout.size))
+
+        header = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(56), padding=[dp(16), dp(12), dp(16), dp(12)])
+        with header.canvas.before:
+            Color(*PRIMARY, 1)
+            Rectangle(pos=header.pos, size=header.size)
+        header.bind(pos=lambda i, v: setattr(header.canvas.before.children[-1], 'pos', header.pos))
+        header.bind(size=lambda i, v: setattr(header.canvas.before.children[-1], 'size', header.size))
+
+        h_label = Label(text='Scan Reading', font_size=sp(20), bold=True, color=(1, 1, 1, 1),
+                         halign='center', valign='middle')
+        h_label.bind(size=h_label.setter('text_size'))
+        header.add_widget(h_label)
+
+        settings_btn = Button(text='\u2699', font_size=sp(22), size_hint=(None, None), size=(dp(44), dp(44)),
+                               background_normal='', background_color=(1, 1, 1, 0.2), color=(1, 1, 1, 1))
+        settings_btn.bind(on_press=self._open_settings)
+        header.add_widget(settings_btn)
+
+        layout.add_widget(header)
+
+        scroll = ScrollView()
+        content = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(16), padding=[dp(20), dp(20), dp(20), dp(20)])
+        content.bind(minimum_height=content.setter('height'))
+
+        self.api_status = Label(
+            text='',
+            font_size=sp(12), color=TEXT_SECONDARY,
+            size_hint_y=None, height=dp(20), halign='center', valign='middle'
+        )
+        self.api_status.bind(size=self.api_status.setter('text_size'))
+        content.add_widget(self.api_status)
+
+        info = Label(
+            text='Take a photo of a blood pressure reading\ndisplay on your monitor to auto-fill the form.',
+            font_size=sp(15), color=TEXT_COLOR,
+            halign='center', valign='middle',
+            size_hint_y=None, height=dp(70)
+        )
+        info.bind(size=info.setter('text_size'))
+        content.add_widget(info)
+
+        content.add_widget(Widget(size_hint_y=None, height=dp(10)))
+
+        camera_btn = Button(
+            text='\u25CB  TAKE PHOTO',
+            size_hint_y=None, height=dp(60),
+            background_normal='', background_color=PRIMARY,
+            color=(1, 1, 1, 1), font_size=sp(17), bold=True
+        )
+        camera_btn.bind(on_press=self._take_photo)
+        content.add_widget(camera_btn)
+
+        content.add_widget(Widget(size_hint_y=None, height=dp(10)))
+
+        gallery_btn = Button(
+            text='\u25A1  CHOOSE FROM GALLERY',
+            size_hint_y=None, height=dp(60),
+            background_normal='', background_color=(0.3, 0.4, 0.8, 1),
+            color=(1, 1, 1, 1), font_size=sp(17), bold=True
+        )
+        gallery_btn.bind(on_press=self._choose_gallery)
+        content.add_widget(gallery_btn)
+
+        content.add_widget(Widget(size_hint_y=None, height=dp(20)))
+
+        self.result_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(8))
+        self.result_box.bind(minimum_height=self.result_box.setter('height'))
+        content.add_widget(self.result_box)
+
+        scroll.add_widget(content)
+        layout.add_widget(scroll)
+
+        self.add_widget(layout)
+
+    def on_enter(self, *args):
+        self._update_api_status()
+
+    def _update_api_status(self):
+        from config import get_api_key
+        key = get_api_key()
+        if key:
+            masked = key[:6] + '*' * (len(key) - 8) + key[-4:] if len(key) > 10 else '***'
+            self.api_status.text = f'API Key: {masked}'
+            self.api_status.color = SUCCESS
+        else:
+            self.api_status.text = '\u26A0 No API key set. Tap \u2699 to configure.'
+            self.api_status.color = WARNING
+
+    def _open_settings(self, *args):
+        from config import get_api_key, set_api_key
+        current_key = get_api_key()
+
+        content = BoxLayout(orientation='vertical', spacing=dp(12), padding=[dp(16), dp(16), dp(16), dp(16)])
+        content.add_widget(Label(text='Enter your Google Cloud Vision API key:',
+                                 font_size=sp(14), color=TEXT_COLOR, size_hint_y=None, height=dp(24),
+                                 halign='left', valign='middle'))
+        content.add_widget(Label(text='(or leave blank to clear)',
+                                 font_size=sp(11), color=TEXT_SECONDARY, size_hint_y=None, height=dp(16),
+                                 halign='left', valign='middle'))
+
+        text_input = TextInput(text=current_key, size_hint_y=None, height=dp(48),
+                                multiline=False, font_size=sp(14), padding=[dp(8), dp(12)])
+
+        btn_row = BoxLayout(orientation='horizontal', spacing=dp(12), size_hint_y=None, height=dp(48))
+
+        popup = Popup(title='API Key Settings', content=content, size_hint=(0.9, 0.45))
+
+        def save_key(*args):
+            set_api_key(text_input.text.strip())
+            self._update_api_status()
+            show_toast('API key saved')
+            popup.dismiss()
+
+        save_btn = Button(text='SAVE', background_normal='', background_color=PRIMARY, color=(1, 1, 1, 1))
+        save_btn.bind(on_press=save_key)
+
+        cancel_btn = Button(text='CANCEL', background_normal='', background_color=(0.8, 0.8, 0.8, 1), color=TEXT_COLOR)
+        cancel_btn.bind(on_press=lambda x: popup.dismiss())
+
+        btn_row.add_widget(cancel_btn)
+        btn_row.add_widget(save_btn)
+
+        content.add_widget(text_input)
+        content.add_widget(Widget(size_hint_y=None, height=dp(8)))
+        content.add_widget(btn_row)
+
+        popup.open()
+
+    def _take_photo(self, *args):
+        if platform == 'android':
+            try:
+                from jnius import autoclass
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                Intent = autoclass('android.content.Intent')
+                MediaStore = autoclass('android.provider.MediaStore')
+                intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                uri = self._get_temp_uri()
+                intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
+                PythonActivity.mActivity.startActivityForResult(intent, 1001)
+            except Exception as e:
+                self._fallback_file_chooser('photo')
+        else:
+            self._fallback_file_chooser('photo')
+
+    def _choose_gallery(self, *args):
+        if platform == 'android':
+            try:
+                from jnius import autoclass
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                Intent = autoclass('android.content.Intent')
+                intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                intent.setType('image/*')
+                PythonActivity.mActivity.startActivityForResult(intent, 1002)
+            except Exception as e:
+                self._fallback_file_chooser('gallery')
+        else:
+            self._fallback_file_chooser('gallery')
+
+    def _get_temp_uri(self):
+        from jnius import autoclass
+        context = autoclass('org.kivy.android.PythonActivity').mActivity
+        FileProvider = autoclass('androidx.core.content.FileProvider')
+        File = autoclass('java.io.File')
+        temp_dir = context.getCacheDir()
+        temp_file = File(temp_dir, 'bp_photo_' + str(int(datetime.now().timestamp())) + '.jpg')
+        return FileProvider.getUriForFile(context, context.getPackageName() + '.fileprovider', temp_file)
+
+    def _fallback_file_chooser(self, source_type):
+        from kivy.uix.filechooser import FileChooserListView
+        from kivy.uix.modalview import ModalView
+
+        content = BoxLayout(orientation='vertical', spacing=dp(8), padding=[dp(8), dp(8), dp(8), dp(8)])
+        fc = FileChooserListView(path=os.path.expanduser('~'), filters=['*.png', '*.jpg', '*.jpeg'])
+        btn_select = Button(text='SELECT', size_hint_y=None, height=dp(48),
+                             background_normal='', background_color=PRIMARY, color=(1, 1, 1, 1))
+        btn_close = Button(text='CANCEL', size_hint_y=None, height=dp(48),
+                           background_normal='', background_color=(0.8, 0.8, 0.8, 1), color=TEXT_COLOR)
+
+        btn_row = BoxLayout(orientation='horizontal', spacing=dp(12), size_hint_y=None, height=dp(48))
+
+        popup = Popup(title='Select Image', content=content, size_hint=(0.95, 0.85))
+
+        def select(*args):
+            if fc.selection:
+                popup.dismiss()
+                self._process_image(fc.selection[0])
+
+        btn_select.bind(on_press=select)
+        btn_close.bind(on_press=lambda x: popup.dismiss())
+        btn_row.add_widget(btn_close)
+        btn_row.add_widget(btn_select)
+
+        content.add_widget(fc)
+        content.add_widget(btn_row)
+
+        popup.open()
+
+    def _process_image(self, image_path):
+        from ocr_helper import ocr_image, parse_ocr_text
+
+        self.result_box.clear_widgets()
+        loading = Label(
+            text='Analyzing image...\nPlease wait.',
+            font_size=sp(16), color=TEXT_COLOR,
+            size_hint_y=None, height=dp(60),
+            halign='center', valign='middle'
+        )
+        loading.bind(size=loading.setter('text_size'))
+        self.result_box.add_widget(loading)
+
+        try:
+            text = ocr_image(image_path)
+            parsed = parse_ocr_text(text)
+            self._show_confirmation(parsed, text)
+        except Exception as e:
+            self.result_box.clear_widgets()
+            err = Label(
+                text=f'Error: {str(e)}',
+                font_size=sp(14), color=DANGER,
+                size_hint_y=None, height=dp(60),
+                halign='center', valign='middle'
+            )
+            err.bind(size=err.setter('text_size'))
+            self.result_box.add_widget(err)
+
+    def _show_confirmation(self, parsed, raw_text):
+        self.result_box.clear_widgets()
+
+        card = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(8), padding=[dp(16), dp(16), dp(16), dp(16)])
+        card.bind(minimum_height=card.setter('height'))
+        with card.canvas.before:
+            Color(1, 1, 1, 1)
+            Rectangle(pos=card.pos, size=card.size)
+            Color(0.88, 0.88, 0.88, 1)
+            Line(rounded_rectangle=[card.x, card.y, card.width, card.height, dp(8)], width=1)
+        card.bind(pos=lambda i, v: self._update_card_bg(i, v),
+                  size=lambda i, v: self._update_card_bg(i, v))
+
+        label = Label(
+            text='Extracted Values',
+            font_size=sp(16), bold=True, color=TEXT_COLOR,
+            size_hint_y=None, height=dp(24), halign='center', valign='middle'
+        )
+        label.bind(size=label.setter('text_size'))
+        card.add_widget(label)
+
+        parsed_ts = datetime.now()
+
+        card.add_widget(Label(text='Timestamp', font_size=sp(12), color=TEXT_SECONDARY,
+                              size_hint_y=None, height=dp(16), halign='left', valign='middle'))
+
+        self.conf_ts = TextInput(
+            text=parsed_ts.strftime('%m/%d/%Y %I:%M %p'),
+            size_hint_y=None, height=dp(44), multiline=False, font_size=sp(16),
+            padding=[dp(8), dp(8)]
+        )
+        card.add_widget(self.conf_ts)
+
+        input_grid = GridLayout(cols=3, spacing=dp(8), size_hint_y=None, height=dp(80))
+
+        def make_field_box(label, key):
+            ti = TextInput(
+                text=str(parsed.get(key, '')),
+                input_filter='int', multiline=False, font_size=sp(20),
+                halign='center', padding=[dp(4), dp(8)]
+            )
+            return ti
+
+        self.conf_sys = make_field_box('SYS', 'sys')
+        self.conf_dia = make_field_box('DIA', 'dia')
+        self.conf_hr = make_field_box('HR', 'hr')
+
+        for label, ti in [('SYS', self.conf_sys), ('DIA', self.conf_dia), ('HR', self.conf_hr)]:
+            box = BoxLayout(orientation='vertical', spacing=dp(2))
+            box.add_widget(Label(text=label, font_size=sp(11), color=TEXT_COLOR,
+                                  size_hint_y=None, height=dp(16), halign='center', valign='middle'))
+            box.add_widget(ti)
+            input_grid.add_widget(box)
+
+        card.add_widget(input_grid)
+
+        btn_row = BoxLayout(orientation='horizontal', spacing=dp(12), size_hint_y=None, height=dp(48))
+        save_btn = Button(text='SAVE READING', background_normal='', background_color=SUCCESS, color=(1, 1, 1, 1), bold=True)
+        save_btn.bind(on_press=self._save_scanned)
+        cancel_btn = Button(text='CANCEL', background_normal='', background_color=(0.8, 0.8, 0.8, 1), color=TEXT_COLOR)
+        cancel_btn.bind(on_press=lambda x: self.result_box.clear_widgets())
+        btn_row.add_widget(cancel_btn)
+        btn_row.add_widget(save_btn)
+        card.add_widget(btn_row)
+
+        self.result_box.add_widget(card)
+
+    def _update_card_bg(self, instance, value):
+        for child in instance.canvas.before.children:
+            if isinstance(child, Rectangle):
+                child.pos = instance.pos
+                child.size = instance.size
+            elif isinstance(child, Line):
+                child.rounded_rectangle = [instance.x, instance.y, instance.width, instance.height, dp(8)]
+
+    def _save_scanned(self, *args):
+        app = App.get_running_app()
+        timestamp = self.conf_ts.text.strip()
+        sys_val = self.conf_sys.text.strip()
+        dia_val = self.conf_dia.text.strip()
+        hr_val = self.conf_hr.text.strip()
+
+        if not timestamp or not sys_val or not dia_val or not hr_val:
+            popup = Popup(title='Error', content=Label(text='Please fill in all fields'),
+                          size_hint=(0.8, 0.4))
+            popup.open()
+            return
+
+        try:
+            sys_val = int(sys_val)
+            dia_val = int(dia_val)
+            hr_val = int(hr_val)
+        except ValueError:
+            popup = Popup(title='Error', content=Label(text='Values must be numbers'),
+                          size_hint=(0.8, 0.4))
+            popup.open()
+            return
+
+        try:
+            timestamp = self._parse_timestamp(timestamp)
+        except ValueError:
+            popup = Popup(title='Error', content=Label(
+                text='Invalid date format. Use MM/DD/YYYY HH:MM AM/PM'),
+                          size_hint=(0.8, 0.4))
+            popup.open()
+            return
+
+        app.db.add_reading(timestamp, sys_val, dia_val, hr_val)
+        show_toast('Reading saved from scan!')
+        self.result_box.clear_widgets()
+        confirm = Label(text='Reading saved!', font_size=sp(18), color=SUCCESS,
+                         size_hint_y=None, height=dp(60), halign='center', valign='middle')
+        confirm.bind(size=confirm.setter('text_size'))
+        self.result_box.add_widget(confirm)
+
+    def _parse_timestamp(self, ts_str):
+        formats = [
+            '%m/%d/%Y %I:%M %p',
+            '%m/%d/%Y %I:%M%p',
+            '%m/%d/%Y %H:%M',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d %I:%M %p',
+            '%m/%d/%y %I:%M %p',
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(ts_str, fmt).strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                continue
+        raise ValueError(f'Cannot parse timestamp: {ts_str}')
 
 
 class NavButton(ButtonBehavior, BoxLayout):
@@ -969,12 +1358,12 @@ class NavButton(ButtonBehavior, BoxLayout):
 
     def _navigate(self, *args):
         app = App.get_running_app()
-        app.root.current = self.screen_name
+        app.sm.current = self.screen_name
         self._update_active()
 
     def _update_active(self):
         app = App.get_running_app()
-        is_active = app.root.current == self.screen_name
+        is_active = app.sm.current == self.screen_name
         if is_active:
             self.icon.color = PRIMARY
             self.label.color = PRIMARY
@@ -985,46 +1374,51 @@ class NavButton(ButtonBehavior, BoxLayout):
 
 class BloodPressureApp(App):
     def build(self):
-        self.db = Database()
+        db_path = os.path.join(self.user_data_dir, 'blood_pressure.db')
+        self.db = Database(db_path)
         self.title = 'BP Tracker'
 
         Window.clearcolor = (1, 1, 1, 1)
 
         root = BoxLayout(orientation='vertical')
 
-        sm = ScreenManager()
-        sm.add_widget(DashboardScreen(name='dashboard'))
-        sm.add_widget(ReadingsScreen(name='readings'))
-        sm.add_widget(AddEditScreen(name='add'))
-        sm.add_widget(ChartsScreen(name='charts'))
-        sm.add_widget(ExportScreen(name='export'))
+        self.sm = ScreenManager()
+        self.sm.add_widget(DashboardScreen(name='dashboard'))
+        self.sm.add_widget(ReadingsScreen(name='readings'))
+        self.sm.add_widget(AddEditScreen(name='add'))
+        self.sm.add_widget(ScanScreen(name='scan'))
+        self.sm.add_widget(ChartsScreen(name='charts'))
+        self.sm.add_widget(ExportScreen(name='export'))
 
-        root.add_widget(sm)
+        root.add_widget(self.sm)
 
-        nav_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(56),
-                             spacing=0, padding=[0, 0, 0, 0])
-        with nav_bar.canvas.before:
+        self.nav_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(56),
+                                  spacing=0, padding=[0, 0, 0, 0])
+        with self.nav_bar.canvas.before:
             Color(0.97, 0.97, 0.97, 1)
-            self._nav_rect = Rectangle(pos=nav_bar.pos, size=nav_bar.size)
+            self._nav_rect = Rectangle(pos=self.nav_bar.pos, size=self.nav_bar.size)
             Color(0.85, 0.85, 0.85, 1)
-            Line(points=[nav_bar.x, nav_bar.y + nav_bar.height, nav_bar.x + nav_bar.width, nav_bar.y + nav_bar.height],
+            Line(points=[self.nav_bar.x, self.nav_bar.y + self.nav_bar.height, self.nav_bar.x + self.nav_bar.width, self.nav_bar.y + self.nav_bar.height],
                  width=1)
-        nav_bar.bind(pos=self._update_nav_bg, size=self._update_nav_bg)
+        self.nav_bar.bind(pos=self._update_nav_bg, size=self._update_nav_bg)
 
         nav_items = [
             ('Home', '\u2302', 'dashboard'),
             ('List', '\u2630', 'readings'),
             ('Add', '+', 'add'),
-            ('Charts', '\u25B3', 'charts'),
-            ('Export', '\u21E5', 'export'),
+            ('Scan', '\u25CB', 'scan'),
+            ('Charts', '\u25A3', 'charts'),
+            ('Export', '\u2913', 'export'),
         ]
 
         for text, icon, screen_name in nav_items:
             btn = NavButton(text, icon, screen_name)
-            btn.size_hint_x = 0.2
-            nav_bar.add_widget(btn)
+            btn.size_hint_x = 1.0 / len(nav_items)
+            self.nav_bar.add_widget(btn)
 
-        root.add_widget(nav_bar)
+        root.add_widget(self.nav_bar)
+
+        self.sm.bind(current=self._on_screen_changed)
 
         return root
 
@@ -1032,6 +1426,11 @@ class BloodPressureApp(App):
         if hasattr(self, '_nav_rect'):
             self._nav_rect.pos = instance.pos
             self._nav_rect.size = instance.size
+
+    def _on_screen_changed(self, instance, value):
+        for child in self.nav_bar.children:
+            if isinstance(child, NavButton):
+                child._update_active()
 
     def on_start(self):
         self._import_if_empty()
@@ -1057,9 +1456,6 @@ class BloodPressureApp(App):
 
 
 def import_from_markdown(filepath, db):
-    import re
-    from datetime import datetime
-
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 

@@ -2,11 +2,12 @@ import sqlite3
 import csv
 import os
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blood_pressure.db')
-
 
 class Database:
-    def __init__(self, db_path=DB_PATH):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blood_pressure.db')
+        self.db_path = db_path
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()
         self._create_table()
@@ -33,7 +34,7 @@ class Database:
         return self.cursor.lastrowid
 
     def get_all_readings(self):
-        self.cursor.execute('SELECT * FROM readings ORDER BY timestamp ASC')
+        self.cursor.execute('SELECT * FROM readings ORDER BY timestamp DESC')
         return self.cursor.fetchall()
 
     def get_reading(self, reading_id):
