@@ -6,23 +6,41 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
-    name: Build for Android
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          workdir: .
-          buildozer_version: stable
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk \
+            autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            cmake libffi-dev libssl-dev \
+            python3-pip ccache
+          sudo update-java-alternatives -s java-1.17.0-openjdk-amd64 || true
+          java -version
+
+      - name: Install buildozer
+        run: |
+          pip install --upgrade pip wheel cython
+          pip install buildozer
+
+      - name: Build APK
+        run: |
+          rm -f blood_pressure.db
+          buildozer android debug
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bp-tracker-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: ${{ github.workspace }}/bin/*.apk
