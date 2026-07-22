@@ -7,35 +7,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: kivy/buildozer:latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install system dependencies
+      - name: Fix permissions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            git zip unzip openjdk-17-jdk \
-            autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev \
-            python3-pip ccache
-          sudo update-java-alternatives -s java-1.17.0-openjdk-amd64 || true
-          java -version
-
-      - name: Install buildozer
-        run: |
-          pip install --upgrade pip wheel cython
-          pip install buildozer
+          sudo chown -R user:user ${{ github.workspace }}
 
       - name: Build APK
         run: |
+          cd ${{ github.workspace }}
           rm -f blood_pressure.db
           buildozer android debug
 
