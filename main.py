@@ -999,10 +999,10 @@ class ScanScreen(Screen):
         content.add_widget(self.api_status)
 
         info = Label(
-            text='Take a photo of a blood pressure reading\ndisplay on your monitor to auto-fill the form.',
+            text='Take a photo of your BP monitor display,\nthen enter the values manually below.\n(Optional: set an API key for auto-OCR)',
             font_size=sp(15), color=TEXT_COLOR,
             halign='center', valign='middle',
-            size_hint_y=None, height=dp(70)
+            size_hint_y=None, height=dp(90)
         )
         info.bind(size=info.setter('text_size'))
         content.add_widget(info)
@@ -1048,11 +1048,11 @@ class ScanScreen(Screen):
         key = get_api_key()
         if key:
             masked = key[:6] + '*' * (len(key) - 8) + key[-4:] if len(key) > 10 else '***'
-            self.api_status.text = f'API Key: {masked}'
+            self.api_status.text = f'OCR: ON (\u2699 {masked})'
             self.api_status.color = SUCCESS
         else:
-            self.api_status.text = '\u26A0 No API key set. Tap \u2699 to configure.'
-            self.api_status.color = WARNING
+            self.api_status.text = 'OCR: OFF (tap \u2699 to enable auto-read)'
+            self.api_status.color = TEXT_SECONDARY
 
     def _open_settings(self, *args):
         from config import get_api_key, set_api_key
@@ -1164,32 +1164,37 @@ class ScanScreen(Screen):
         popup.open()
 
     def _process_image(self, image_path):
-        from ocr_helper import ocr_image, parse_ocr_text
+        from config import get_api_key
+        from ocr_helper import parse_ocr_text
 
         self.result_box.clear_widgets()
         loading = Label(
-            text='Analyzing image...\nPlease wait.',
+            text='Processing image...',
             font_size=sp(16), color=TEXT_COLOR,
             size_hint_y=None, height=dp(60),
             halign='center', valign='middle'
         )
         loading.bind(size=loading.setter('text_size'))
         self.result_box.add_widget(loading)
+        Clock.schedule_once(lambda dt: self._do_process(image_path), 0.1)
 
-        try:
-            text = ocr_image(image_path)
-            parsed = parse_ocr_text(text)
-            self._show_confirmation(parsed, text)
-        except Exception as e:
-            self.result_box.clear_widgets()
-            err = Label(
-                text=f'Error: {str(e)}',
-                font_size=sp(14), color=DANGER,
-                size_hint_y=None, height=dp(60),
-                halign='center', valign='middle'
-            )
-            err.bind(size=err.setter('text_size'))
-            self.result_box.add_widget(err)
+    def _do_process(self, image_path):
+        from config import get_api_key
+        from ocr_helper import ocr_image, parse_ocr_text
+
+        self.result_box.clear_widgets()
+        api_key = get_api_key()
+        parsed = {}
+        raw_text = ''
+
+        if api_key:
+            try:
+                raw_text = ocr_image(image_path)
+                parsed = parse_ocr_text(raw_text)
+            except Exception as e:
+                pass
+
+        self._show_confirmation(parsed, raw_text)
 
     def _show_confirmation(self, parsed, raw_text):
         self.result_box.clear_widgets()
