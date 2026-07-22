@@ -19,7 +19,7 @@ jobs:
         run: |
           cd /__w/bp-tracker/bp-tracker
           rm -f blood_pressure.db
-          buildozer android debug
+          echo y | buildozer android debug
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
