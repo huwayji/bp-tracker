@@ -35,6 +35,48 @@ TEXT_SECONDARY = (0.46, 0.46, 0.46, 1)
 DANGER = (0.90, 0.30, 0.24, 1)
 SUCCESS = (0.30, 0.69, 0.31, 1)
 WARNING = (1, 0.60, 0.0, 1)
+NAV_BG = (0.97, 0.97, 0.97, 1)
+NAV_LINE = (0.85, 0.85, 0.85, 1)
+
+DARK_PRIMARY = (0.20, 0.65, 0.95, 1)
+DARK_BG = (0.11, 0.11, 0.13, 1)
+DARK_CARD_BG = (0.18, 0.18, 0.20, 1)
+DARK_TEXT_COLOR = (0.92, 0.92, 0.95, 1)
+DARK_TEXT_SECONDARY = (0.60, 0.60, 0.65, 1)
+DARK_DANGER = (0.95, 0.40, 0.35, 1)
+DARK_SUCCES = (0.35, 0.75, 0.40, 1)
+DARK_WARNING = (1, 0.70, 0.10, 1)
+DARK_NAV_BG = (0.08, 0.08, 0.10, 1)
+DARK_NAV_LINE = (0.20, 0.20, 0.22, 1)
+
+IS_DARK = False
+
+
+def apply_theme(dark):
+    global IS_DARK, PRIMARY, BG, CARD_BG, TEXT_COLOR, TEXT_SECONDARY, DANGER, SUCCESS, WARNING, NAV_BG, NAV_LINE
+    IS_DARK = dark
+    if dark:
+        PRIMARY = (0.20, 0.65, 0.95, 1)
+        BG = (0.11, 0.11, 0.13, 1)
+        CARD_BG = (0.18, 0.18, 0.20, 1)
+        TEXT_COLOR = (0.92, 0.92, 0.95, 1)
+        TEXT_SECONDARY = (0.60, 0.60, 0.65, 1)
+        DANGER = (0.95, 0.40, 0.35, 1)
+        SUCCESS = (0.35, 0.75, 0.40, 1)
+        WARNING = (1, 0.70, 0.10, 1)
+        NAV_BG = (0.08, 0.08, 0.10, 1)
+        NAV_LINE = (0.20, 0.20, 0.22, 1)
+    else:
+        PRIMARY = (0.13, 0.59, 0.95, 1)
+        BG = (0.96, 0.96, 0.96, 1)
+        CARD_BG = (1, 1, 1, 1)
+        TEXT_COLOR = (0.13, 0.13, 0.13, 1)
+        TEXT_SECONDARY = (0.46, 0.46, 0.46, 1)
+        DANGER = (0.90, 0.30, 0.24, 1)
+        SUCCESS = (0.30, 0.69, 0.31, 1)
+        WARNING = (1, 0.60, 0.0, 1)
+        NAV_BG = (0.97, 0.97, 0.97, 1)
+        NAV_LINE = (0.85, 0.85, 0.85, 1)
 
 if platform == 'android':
     from jnius import autoclass
@@ -362,7 +404,8 @@ class AddEditScreen(Screen):
         layout = BoxLayout(orientation='vertical', spacing=0)
 
         with layout.canvas.before:
-            Color(*BG, 1)
+            c = Color(*BG, 1)
+            self._bg_color = c
             self.bg_rect = Rectangle(pos=layout.pos, size=layout.size)
         layout.bind(pos=lambda i, v: setattr(self.bg_rect, 'pos', layout.pos))
         layout.bind(size=lambda i, v: setattr(self.bg_rect, 'size', layout.size))
@@ -570,7 +613,10 @@ class AddEditScreen(Screen):
             self.header_label.text = 'Edit Reading'
 
     def on_enter(self, *args):
-        pass
+        self.clear_form()
+
+    def refresh(self):
+        self.clear_form()
 
 
 class ReadingsScreen(Screen):
@@ -646,10 +692,10 @@ class ReadingsScreen(Screen):
 
         with card.canvas.before:
             Color(1, 1, 1, 1)
-            card._rect = Rectangle(pos=card.pos, size=card.size)
+            Rectangle(pos=(0, 0), size=(0, 0))
             Color(0.88, 0.88, 0.88, 1)
-            card._line = Line(rounded_rectangle=[card.x, card.y, card.width, card.height, dp(8)], width=1)
-        card.bind(pos=self._update_card_rect, size=self._update_card_rect)
+            Line(rounded_rectangle=[0, 0, 0, 0, dp(8)], width=1)
+        card.bind(size=self._update_card_size)
 
         top_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(28), spacing=dp(8))
 
@@ -720,12 +766,12 @@ class ReadingsScreen(Screen):
 
         return card
 
-    def _update_card_rect(self, instance, value):
-        if hasattr(instance, '_rect'):
-            instance._rect.pos = instance.pos
-            instance._rect.size = instance.size
-        if hasattr(instance, '_line'):
-            instance._line.rounded_rectangle = [instance.x, instance.y, instance.width, instance.height, dp(8)]
+    def _update_card_size(self, instance, value):
+        for child in instance.canvas.before.children:
+            if isinstance(child, Rectangle):
+                child.size = instance.size
+            elif isinstance(child, Line):
+                child.rounded_rectangle = [0, 0, instance.width, instance.height, dp(8)]
 
     def _edit_reading(self, reading_id):
         app = App.get_running_app()
@@ -1379,11 +1425,14 @@ class NavButton(ButtonBehavior, BoxLayout):
 
 class BloodPressureApp(App):
     def build(self):
+        from config import get_dark_mode
+        apply_theme(get_dark_mode())
+
         db_path = os.path.join(self.user_data_dir, 'blood_pressure.db')
         self.db = Database(db_path)
         self.title = 'BP Tracker'
 
-        Window.clearcolor = (1, 1, 1, 1)
+        Window.clearcolor = (0.11, 0.11, 0.13, 1) if IS_DARK else (1, 1, 1, 1)
 
         root = BoxLayout(orientation='vertical')
 
@@ -1399,27 +1448,39 @@ class BloodPressureApp(App):
 
         self.nav_bar = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(56),
                                   spacing=0, padding=[0, 0, 0, 0])
+        self._nav_bar_colors = []
         with self.nav_bar.canvas.before:
-            Color(0.97, 0.97, 0.97, 1)
+            Color(*NAV_BG, 1)
+            self._nav_bar_colors.append(self.nav_bar.canvas.before.children[-1])
             self._nav_rect = Rectangle(pos=self.nav_bar.pos, size=self.nav_bar.size)
-            Color(0.85, 0.85, 0.85, 1)
+            Color(*NAV_LINE, 1)
+            self._nav_bar_colors.append(self.nav_bar.canvas.before.children[-1])
             Line(points=[self.nav_bar.x, self.nav_bar.y + self.nav_bar.height, self.nav_bar.x + self.nav_bar.width, self.nav_bar.y + self.nav_bar.height],
                  width=1)
         self.nav_bar.bind(pos=self._update_nav_bg, size=self._update_nav_bg)
 
         nav_items = [
-            ('Home', '\u2302', 'dashboard'),
+            ('Home', '\u25C6', 'dashboard'),
             ('List', '\u2630', 'readings'),
             ('Add', '+', 'add'),
             ('Scan', '\u25CB', 'scan'),
-            ('Charts', '\u25A3', 'charts'),
-            ('Export', '\u2913', 'export'),
+            ('Charts', '\u25A0', 'charts'),
+            ('Export', '\u25BC', 'export'),
         ]
 
         for text, icon, screen_name in nav_items:
             btn = NavButton(text, icon, screen_name)
-            btn.size_hint_x = 1.0 / len(nav_items)
+            btn.size_hint_x = 0.14
             self.nav_bar.add_widget(btn)
+
+        self.theme_btn = Button(
+            text='\u263D' if not IS_DARK else '\u2600',
+            font_size=sp(18), size_hint_x=0.16,
+            background_normal='', background_color=(0, 0, 0, 0),
+            color=TEXT_SECONDARY
+        )
+        self.theme_btn.bind(on_press=self._toggle_theme)
+        self.nav_bar.add_widget(self.theme_btn)
 
         root.add_widget(self.nav_bar)
 
@@ -1431,11 +1492,43 @@ class BloodPressureApp(App):
         if hasattr(self, '_nav_rect'):
             self._nav_rect.pos = instance.pos
             self._nav_rect.size = instance.size
+        if len(self._nav_bar_colors) >= 2:
+            self._nav_bar_colors[0].rgba = NAV_BG
+            self._nav_bar_colors[1].rgba = NAV_LINE
 
     def _on_screen_changed(self, instance, value):
         for child in self.nav_bar.children:
             if isinstance(child, NavButton):
                 child._update_active()
+
+    def _toggle_theme(self, *args):
+        from config import set_dark_mode
+        apply_theme(not IS_DARK)
+        set_dark_mode(IS_DARK)
+        self.theme_btn.text = '\u263D' if not IS_DARK else '\u2600'
+        self.theme_btn.color = TEXT_SECONDARY
+
+        if len(self._nav_bar_colors) >= 2:
+            self._nav_bar_colors[0].rgba = NAV_BG
+            self._nav_bar_colors[1].rgba = NAV_LINE
+
+        if hasattr(self, '_nav_rect'):
+            self._nav_rect.pos = self.nav_bar.pos
+            self._nav_rect.size = self.nav_bar.size
+
+        for child in self.nav_bar.children:
+            if isinstance(child, NavButton):
+                child._update_active()
+
+        current = self.sm.current_screen
+        if current:
+            for child in current.canvas.before.children:
+                if isinstance(child, Color):
+                    child.rgba = BG
+                    break
+            if hasattr(current, 'on_enter'):
+                current.on_enter()
+                screen.on_enter()
 
     def on_start(self):
         self._import_if_empty()

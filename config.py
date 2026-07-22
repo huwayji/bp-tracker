@@ -37,3 +37,13 @@ def set_api_key(key):
     config = load_config()
     config['google_vision_api_key'] = key
     save_config(config)
+
+
+def get_dark_mode():
+    return load_config().get('dark_mode', False)
+
+
+def set_dark_mode(enabled):
+    config = load_config()
+    config['dark_mode'] = enabled
+    save_config(config)
