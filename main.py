@@ -1004,6 +1004,9 @@ class ScanScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._build_ui()
+        if platform == 'android':
+            from android.activity import bind
+            bind(on_activity_result=self._on_activity_result)
 
     def _build_ui(self):
         layout = BoxLayout(orientation='vertical')
@@ -1148,8 +1151,6 @@ class ScanScreen(Screen):
                 Intent = autoclass('android.content.Intent')
                 MediaStore = autoclass('android.provider.MediaStore')
                 intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-                uri = self._get_temp_uri()
-                intent.putExtra(MediaStore.EXTRA_OUTPUT, uri)
                 PythonActivity.mActivity.startActivityForResult(intent, 1001)
             except Exception as e:
                 self._fallback_file_chooser('photo')
@@ -1170,14 +1171,55 @@ class ScanScreen(Screen):
         else:
             self._fallback_file_chooser('gallery')
 
-    def _get_temp_uri(self):
+    def _on_activity_result(self, request_code, result_code, intent):
+        if result_code != -1:
+            return
+        try:
+            if request_code == 1001 and intent and intent.getExtras():
+                bitmap = intent.getExtras().get('data')
+                if bitmap:
+                    self._save_camera_bitmap(bitmap)
+            elif request_code == 1002 and intent and intent.getData():
+                self._save_gallery_uri(intent.getData())
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            show_toast('Error processing photo')
+
+    def _save_camera_bitmap(self, bitmap):
         from jnius import autoclass
-        context = autoclass('org.kivy.android.PythonActivity').mActivity
-        FileProvider = autoclass('androidx.core.content.FileProvider')
         File = autoclass('java.io.File')
-        temp_dir = context.getCacheDir()
-        temp_file = File(temp_dir, 'bp_photo_' + str(int(datetime.now().timestamp())) + '.jpg')
-        return FileProvider.getUriForFile(context, context.getPackageName() + '.fileprovider', temp_file)
+        FileOutputStream = autoclass('java.io.FileOutputStream')
+        CompressFormat = autoclass('android.graphics.Bitmap$CompressFormat')
+        cache = autoclass('org.kivy.android.PythonActivity').mActivity.getCacheDir()
+        temp = File(cache, 'cam_%d.jpg' % int(datetime.now().timestamp()))
+        out = FileOutputStream(temp)
+        bitmap.compress(CompressFormat.JPEG, 90, out)
+        out.close()
+        self._process_image(str(temp.getAbsolutePath()))
+
+    def _save_gallery_uri(self, uri):
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        File = autoclass('java.io.File')
+        FileOutputStream = autoclass('java.io.FileOutputStream')
+
+        context = PythonActivity.mActivity
+        resolver = context.getContentResolver()
+        input_stream = resolver.openInputStream(uri)
+
+        temp = File(context.getCacheDir(), 'gal_%d.jpg' % int(datetime.now().timestamp()))
+        out = FileOutputStream(temp)
+
+        buf = autoclass('byte[]')(8192)
+        n = input_stream.read(buf)
+        while n != -1:
+            out.write(buf, 0, n)
+            n = input_stream.read(buf)
+
+        out.close()
+        input_stream.close()
+        self._process_image(str(temp.getAbsolutePath()))
 
     def _fallback_file_chooser(self, source_type):
         from kivy.uix.filechooser import FileChooserListView
