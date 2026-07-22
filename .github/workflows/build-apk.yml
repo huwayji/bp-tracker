@@ -10,13 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: kivy/buildozer:latest
+      options: --entrypoint /bin/bash
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Fix permissions
-        run: |
-          sudo chown -R user:user ${{ github.workspace }}
 
       - name: Build APK
         run: |
